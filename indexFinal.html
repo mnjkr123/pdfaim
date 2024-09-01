@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Huggingface QA App</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div class="banner">
+            <h1>Welcome to the Huggingface QA App</h1>
+            <p>Your gateway to insightful answers!</p>
+        </div>
+    </header>
+    <main>
+        <div class="container">
+            <h2>Ask a Question</h2>
+            <form id="qa-form">
+                <label for="question">Your question goes here:</label>
+                <textarea id="question" name="question" rows="3" placeholder="Enter your question..."></textarea>
+                <button type="submit">Ask</button>
+            </form>
+            <!-- Spinner element -->
+            <div id="spinner" class="spinner" style="display: none;"></div>
+            <div id="answer" class="response-box"></div>
+        </div>
+    </main>
+    <footer>
+        <p>&copy; 2024 Huggingface QA App. All rights reserved.</p>
+    </footer>
+
+<script>
+
+document.getElementById('qa-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    const question = document.getElementById('question').value;
+
+    // Show spinner
+    document.getElementById('spinner').style.display = 'block';
+
+    fetch('http://127.0.0.1:5000/ask', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `question=${encodeURIComponent(question)}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Function to format content
+        function formatContent(content) {
+            if (!content) return '';
+
+            // Split the answer into sentences
+            const sentences = content
+                .split(/(?<=[.!?])\s+/) // Split by punctuation followed by space
+                .filter(sentence => sentence.trim()) // Remove empty sentences
+                .map(sentence => sentence.trim());
+
+            // Filter out sentences containing "Question:", "Answer:", or ending with a question mark
+            const filteredSentences = sentences.filter(sentence => 
+                !sentence.startsWith('Question:') &&
+                !sentence.startsWith('Answer:') &&
+                !sentence.endsWith('?')
+            );
+
+            // Remove sentences with more than two occurrences of numbers followed by a dot
+            const cleanedSentences = filteredSentences.filter(sentence => {
+                const matchCount = (sentence.match(/\d+\.\s*/g) || []).length;
+                return matchCount <= 2;
+            });
+
+            // Combine sentences to ensure each bullet point has at least 20 words
+            const bullets = [];
+            let currentBullet = '';
+
+            cleanedSentences.forEach(sentence => {
+                // Replace inline occurrences of ". 7." or similar with a full stop "."
+                const cleanedSentence = sentence.replace(/\.\s*\d+\.\s*/g, '. ');
+
+                const wordCount = (currentBullet + ' ' + cleanedSentence).split(' ').length;
+
+                if (wordCount >= 25) {
+                    bullets.push((currentBullet + ' ' + cleanedSentence).trim());
+                    currentBullet = '';
+                } else {
+                    currentBullet += ' ' + cleanedSentence;
+                }
+            });
+
+            if (currentBullet.trim()) {
+                if (currentBullet.split(' ').length >= 25) {
+                    bullets.push(currentBullet.trim());
+                }
+            }
+
+            // Format and clean up bullet points
+            return bullets
+                .map(bullet => bullet
+                    .replace(/^\d+\.\s*/, '')    // Remove leading numbers with a dot (e.g., "12. ")
+                    .replace(/^\*\d+\.\s*/, '*') // Remove leading numbers with a dot after an asterisk (e.g., "*12. ")
+                    .replace(/^\s*\d+\.\s*/, '') // Remove any numbers at the beginning of bullet points
+                    .replace(/\.\s*\d+\.\s*/g, '. ') // Replace inline numbers with a full stop
+                )
+                .map(bullet => `<li>${bullet}</li>`)
+                .join('');
+        }
+
+        // Format both llm_response and pdf_content
+        const llmFormatted = formatContent(data.llm_response);
+        const pdfFormatted = formatContent(data.pdf_content);
+
+        // Combine both formatted responses
+        const combinedAnswer = `${llmFormatted}${pdfFormatted}`;
+
+        // Avoid adding bullet points for empty or non-existent items
+        const answerHtml = combinedAnswer ? `
+            <h3>Answer:</h3>
+            <ul class="answer-list">${combinedAnswer}</ul>
+        ` : '<p>No answer available.</p>';
+
+        document.getElementById('answer').innerHTML = answerHtml;
+    })
+    .catch(error => console.error('Error:', error))
+    .finally(() => {
+        // Hide spinner
+        document.getElementById('spinner').style.display = 'none';
+    });
+});
+
+</script>
+
+</body>
+</html>
